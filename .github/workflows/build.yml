@@ -1,7 +1,7 @@
-name: Poki configurable RemotePairing port
+name: Poki audio-only repair
 on:
   push:
-    branches: [main]
+    branches: [main, voice-audio-fix-20261108]
     paths: ['.github/workflows/build.yml']
   workflow_dispatch:
 permissions:
@@ -29,6 +29,19 @@ jobs:
           git diff --check
           mkdir -p out
           cp remote-port.patch out/
+          git diff > out/modified-source.diff
+      - name: Apply upstream audio-only repair
+        working-directory: source
+        shell: bash
+        run: |
+          python3 - <<'AUDIOFIX'
+          import base64,pathlib
+          pathlib.Path('audio-only.patch').write_bytes(base64.b64decode('LS0tIGEvbmF0aXZlL2lvcy1hcHAvUG9raS9Wb2ljZS9Wb2ljZUxpbmsuc3dpZnQKKysrIGIvbmF0aXZlL2lvcy1hcHAvUG9raS9Wb2ljZS9Wb2ljZUxpbmsuc3dpZnQKQEAgLTU2LDcgKzU2LDE2IEBACiAgICAgICAgICAgICBsZXQgc2Vzc2lvbiA9IFJUQ0F1ZGlvU2Vzc2lvbi5zaGFyZWRJbnN0YW5jZSgpCiAgICAgICAgICAgICBzZXNzaW9uLmxvY2tGb3JDb25maWd1cmF0aW9uKCkKICAgICAgICAgICAgIGRlZmVyIHsgc2Vzc2lvbi51bmxvY2tGb3JDb25maWd1cmF0aW9uKCkgfQotICAgICAgICAgICAgdHJ5IHNlc3Npb24uc2V0Q29uZmlndXJhdGlvbihSVENBdWRpb1Nlc3Npb25Db25maWd1cmF0aW9uLndlYlJUQygpLCBhY3RpdmU6IHRydWUpCisgICAgICAgICAgICBkbyB7CisgICAgICAgICAgICAgICAgdHJ5IHNlc3Npb24uc2V0Q29uZmlndXJhdGlvbihSVENBdWRpb1Nlc3Npb25Db25maWd1cmF0aW9uLndlYlJUQygpLCBhY3RpdmU6IHRydWUpCisgICAgICAgICAgICB9IGNhdGNoIHsKKyAgICAgICAgICAgICAgICAvLyBVcHN0cmVhbSBlY2IzOWVmOiByZWxlYXNlIHN0YWxlIHByZWZlcnJlZCByYXRlL2J1ZmZlci9jaGFubmVsIHNldHRpbmdzLgorICAgICAgICAgICAgICAgIGxldCBhdiA9IEFWQXVkaW9TZXNzaW9uLnNoYXJlZEluc3RhbmNlKCkKKyAgICAgICAgICAgICAgICB0cnk/IGF2LnNldEFjdGl2ZShmYWxzZSkKKyAgICAgICAgICAgICAgICB0cnkgYXYuc2V0Q2F0ZWdvcnkoLnBsYXlBbmRSZWNvcmQsIG1vZGU6IC52b2ljZUNoYXQsIG9wdGlvbnM6IFsuZGVmYXVsdFRvU3BlYWtlciwgLmFsbG93Qmx1ZXRvb3RoSEZQXSkKKyAgICAgICAgICAgICAgICB0cnkgYXYuc2V0QWN0aXZlKHRydWUpCisgICAgICAgICAgICAgICAgc2Vzc2lvbi5hdWRpb1Nlc3Npb25EaWRBY3RpdmF0ZShhdikKKyAgICAgICAgICAgIH0KICAgICAgICAgICAgIGxldCBtaWMgPSBmYWN0b3J5LmF1ZGlvVHJhY2sod2l0aDogZmFjdG9yeS5hdWRpb1NvdXJjZSh3aXRoOiBjb25zdHJhaW50cyksIHRyYWNrSWQ6ICJwb2tpLW1pYyIpCiAgICAgICAgICAgICBwZWVyLmFkZChtaWMsIHN0cmVhbUlkczogWyJwb2tpLXZvaWNlIl0pCiAgICAgICAgIH0gZWxzZSB7CkBAIC0xNDMsNiArMTUyLDEwIEBACiAgICAgICAgIHBlZXI/LmNsb3NlKCkKICAgICAgICAgY2hhbm5lbCA9IG5pbAogICAgICAgICBwZWVyID0gbmlsCisgICAgICAgIGxldCBzZXNzaW9uID0gUlRDQXVkaW9TZXNzaW9uLnNoYXJlZEluc3RhbmNlKCkKKyAgICAgICAgc2Vzc2lvbi5sb2NrRm9yQ29uZmlndXJhdGlvbigpCisgICAgICAgIGlmIHNlc3Npb24uaXNBY3RpdmUgeyB0cnk/IHNlc3Npb24uc2V0QWN0aXZlKGZhbHNlKSB9CisgICAgICAgIHNlc3Npb24udW5sb2NrRm9yQ29uZmlndXJhdGlvbigpCiAgICAgfQogCiAgICAgcHJpdmF0ZSBmdW5jIGxvc3QoXyByZWFzb246IFN0cmluZykgewo='))
+          AUDIOFIX
+          git apply --check audio-only.patch
+          git apply audio-only.patch
+          git diff --check
+          cp audio-only.patch out/
           git diff > out/modified-source.diff
       - name: Select latest installed Xcode
         shell: bash
@@ -64,7 +77,7 @@ jobs:
           brew install xcodegen
           xcodegen generate --spec native/ios-app/project-external.yml
           VERSION="$(cat native/ios-app/VERSION)"
-          BUILD="200${{ github.run_number }}"
+          BUILD="210${{ github.run_number }}"
           xcodebuild build -project native/ios-app/PokiExternal.xcodeproj -scheme Poki -configuration Release -destination generic/platform=iOS -derivedDataPath build/app-external CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO ARCHS=arm64 MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" > build-iphone.log 2>&1 || { tail -n 100 build-iphone.log; exit 1; }
           native/ios-app/scripts/package-app.sh build/app-external/Build/Products/Release-iphoneos/Poki.app external out/Poki-external-port-config-unsigned.ipa "$VERSION" "$BUILD"
           (cd out && shasum -a 256 *.ipa > SHA256SUMS)
