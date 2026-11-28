@@ -1,4 +1,4 @@
-name: Build 2914 cellular voice candidate
+name: Build 2917 cellular voice candidate
 on:
   push:
     branches: [poki-2912-cellular-voice]
@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: JosssphZhou/poki
-          ref: 72f47a2d02b2529fe0ddf2dadbd4e7bad50e5417
+          ref: 04f19da63c6e881e03508ca2ca41049fef7cb029
           persist-credentials: false
       - name: Apply cellular voice change
         shell: bash
@@ -20,38 +20,17 @@ jobs:
           git apply - <<'PATCH'
           --- a/native/ios-app/Poki/Voice/VoiceLink.swift
           +++ b/native/ios-app/Poki/Voice/VoiceLink.swift
-          @@ -196,16 +196,27 @@
+          @@ -196,7 +196,8 @@
                    try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
                        peer.setLocalDescription(offer) { error in if let error { done.resume(throwing: error) } else { done.resume() } }
                    }
           -        let answer = try await exchange(offer.sdp)
-          +        // This one-shot exchange has no signaling channel for later ICE candidates.
-          +        let gatheringDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-          +        while peer.iceGatheringState != .complete && ContinuousClock.now < gatheringDeadline {
-          +            try await Task.sleep(for: .milliseconds(50))
-          +        }
-          +        try Task.checkCancellation()
+          +        // Include any local candidates already gathered without delaying signaling.
           +        let answer = try await exchange(peer.localDescription?.sdp ?? offer.sdp)
                    // The largest event the data channel takes (64 KiB when the answer names none): a screenshot must fit.
                    let size = answer.range(of: #"a=max-message-size:\d+"#, options: .regularExpression).map { answer[$0].dropFirst(19) } ?? "none named"
                    await MainActor.run { AppLog.shared.add("voice", "data channel max-message-size: \(size)") }
-                   try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
-                       peer.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: answer)) { error in if let error { done.resume(throwing: error) } else { done.resume() } }
-                   }
-          -        let deadline = Date().addingTimeInterval(12)
-          +        let deadline = ContinuousClock.now.advanced(by: .seconds(30))
-                   while channel?.readyState != .open {
-          -            if Date() > deadline || peer.connectionState == .failed { throw VoiceError.noPath(Self.describe(peer.iceConnectionState)) }
-          +            if ContinuousClock.now >= deadline || peer.connectionState == .failed || channel?.readyState == .closed {
-          +                let ice = Self.describe(peer.iceConnectionState)
-          +                let channelState = channel.map { String($0.readyState.rawValue) } ?? "missing"
-          +                diagnostics?("voice open failed: ice=\(ice), peer=\(peer.connectionState.rawValue), dataChannel=\(channelState)")
-          +                throw VoiceError.noPath(ice)
-          +            }
-                       try await Task.sleep(for: .milliseconds(20))
-                   }
-                   lock.withLock { opened = true }
-          @@ -330,11 +341,8 @@
+          @@ -330,11 +331,7 @@
                func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
                    switch newState {
                    case .failed: lost("the network path failed")
@@ -60,19 +39,18 @@ jobs:
           -            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self, weak peerConnection] in
           -                if let peerConnection, peerConnection.connectionState != .connected { self?.lost("the network dropped") }
           -            }
-          +        // A disconnected peer can still recover. WebRTC reports failed after exhausting
-          +        // its paths; the data channel also reports a permanent close independently.
+          +        // A transient disconnect can recover. Terminal peer failure and channel closure still end the call.
                    default: break
                    }
                }
           PATCH
       - uses: ./.github/actions/build-ipa
         with:
-          version: '0.5.1'
-          build: '2914'
+          version: '0.5.2'
+          build: '2917'
           editions: external
       - uses: actions/upload-artifact@v4
         with:
-          name: Poki-2914
+          name: Poki-2917
           path: out/*.ipa
           if-no-files-found: error
